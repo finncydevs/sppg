@@ -6,6 +6,9 @@ use App\Models\Salary;
 use App\Models\Employee;
 use Illuminate\Http\Request;
 
+use Illuminate\Support\Facades\DB;
+use App\Models\Transaction;
+
 class SalaryController extends Controller
 {
     public function index() {
@@ -18,7 +21,7 @@ class SalaryController extends Controller
         return view('salaries.create', compact('employees'));
     }
 
-    public function store(Request $request) {
+public function store(Request $request) {
         $data = $request->validate([
             'employee_id' => 'required',
             'period' => 'required',
@@ -28,8 +31,23 @@ class SalaryController extends Controller
         ]);
 
         $data['net_salary'] = $data['basic_salary'] + $data['allowance'] - $data['deduction'];
-        Salary::create($data);
 
-        return redirect()->route('salaries.index')->with('success', 'Gaji berhasil dicatat.');
+        DB::transaction(function() use ($data) {
+            // 1. Simpan Data Gaji
+            $salary = Salary::create($data);
+
+            // 2. OTOMATISASI: Catat di Keuangan (Pengeluaran)
+            Transaction::create([
+                'date' => now(), // Tanggal hari ini
+                'type' => 'Expense', // Tipe Pengeluaran
+                'category' => 'Gaji & Upah',
+                'description' => "Pembayaran Gaji Periode {$salary->period} - {$salary->employee->name}",
+                'amount' => $salary->net_salary, // Sesuai gaji bersih
+                'reference_type' => 'Gaji', // Referensi ke Model Salary
+                'reference_id' => $salary->id
+            ]);
+        });
+
+        return redirect()->route('salaries.index')->with('success', 'Gaji berhasil dicatat & Transaksi keuangan otomatis dibuat.');
     }
 }

@@ -8,6 +8,7 @@ use App\Models\InventoryLot;
 use App\Models\InventoryTransaction;
 use App\Models\Supplier;
 use App\Models\Item;
+use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -97,11 +98,10 @@ class PurchaseOrderController extends Controller
      * Menangani proses Penerimaan Barang (Receiving).
      * Menerima barang dari PO -> Menambah Stok (Lot) -> Update Status PO.
      */
-    public function receive(Request $request, $id)
+   public function receive(Request $request, $id)
     {
         $po = PurchaseOrder::findOrFail($id);
 
-        // Validasi input penerimaan
         $request->validate([
             'items' => 'required|array',
             'items.*.item_id' => 'required|exists:items,id',
@@ -111,29 +111,29 @@ class PurchaseOrderController extends Controller
         ]);
 
         DB::transaction(function () use ($request, $po) {
+            $totalValueReceived = 0; // Variabel untuk hitung uang keluar
             $hasReceivedAny = false;
 
             foreach ($request->items as $receivedItem) {
                 $qtyReceived = $receivedItem['qty_received'];
-
-                // Skip jika jumlah yang diterima 0 atau kosong
                 if ($qtyReceived <= 0) continue;
 
                 $hasReceivedAny = true;
 
-                // 1. Update jumlah yang diterima di tabel purchase_order_items
+                // 1. Update PO Item
                 $poItem = PurchaseOrderItem::where('purchase_order_id', $po->id)
                             ->where('item_id', $receivedItem['item_id'])
                             ->first();
 
                 if ($poItem) {
                     $poItem->increment('quantity_received', $qtyReceived);
+
+                    // Hitung nilai uang: Jumlah Diterima * Harga Satuan di PO
+                    $totalValueReceived += ($qtyReceived * $poItem->price_per_unit);
                 }
 
-                // 2. Buat Inventory Lot Baru (Batch Barang Masuk)
-                // Jika user tidak input nomor lot, generate otomatis
+                // 2. Buat Inventory Lot (Stok Masuk)
                 $lotNumber = $receivedItem['lot_number'] ?? ('LOT-' . date('Ymd') . '-' . time());
-
                 $lot = InventoryLot::create([
                     'item_id' => $receivedItem['item_id'],
                     'lot_number' => $lotNumber,
@@ -143,47 +143,53 @@ class PurchaseOrderController extends Controller
                     'expiry_date' => $receivedItem['expiry_date'] ?? null,
                 ]);
 
-                // 3. Catat Riwayat Transaksi Stok (Kartu Stok)
+                // 3. Catat Kartu Stok
                 InventoryTransaction::create([
                     'item_id' => $receivedItem['item_id'],
                     'inventory_lot_id' => $lot->id,
-                    'type' => 'IN', // Barang Masuk
+                    'type' => 'IN',
                     'quantity' => $qtyReceived,
-                    'reference_type' => 'PurchaseOrder', // Referensi ke Model
+                    'reference_type' => 'Pengadaan',
                     'reference_id' => $po->id,
                     'notes' => 'Penerimaan PO ' . $po->po_number
                 ]);
             }
 
-            if (!$hasReceivedAny) {
-                // Jika tidak ada item valid yang diterima, jangan update status
-                return;
+            // 4. OTOMATISASI: Catat di Keuangan (Pengeluaran)
+            // Hanya catat jika ada barang yang diterima dan ada nilainya
+            if ($totalValueReceived > 0) {
+                Transaction::create([
+                    'date' => now(),
+                    'type' => 'Expense',
+                    'category' => 'Pengadaan Bahan Baku',
+                    'description' => "Pembayaran Barang Masuk PO: {$po->po_number}",
+                    'amount' => $totalValueReceived,
+                    'reference_type' => 'PurchaseOrder',
+                    'reference_id' => $po->id
+                ]);
             }
 
-            // 4. Cek Status PO: Apakah semua item sudah diterima penuh?
+            if (!$hasReceivedAny) return;
+
+            // 5. Cek Status PO
             $allItems = $po->items;
             $isFull = true;
             $isPartial = false;
 
             foreach ($allItems as $item) {
-                if ($item->quantity_received < $item->quantity_ordered) {
-                    $isFull = false;
-                }
-                if ($item->quantity_received > 0) {
-                    $isPartial = true;
-                }
+                if ($item->quantity_received < $item->quantity_ordered) $isFull = false;
+                if ($item->quantity_received > 0) $isPartial = true;
             }
 
             if ($isFull) {
-                $po->update(['status' => 'Received']); // Selesai Penuh
+                $po->update(['status' => 'Received']);
             } elseif ($isPartial) {
-                $po->update(['status' => 'Partial']); // Diterima Sebagian
+                $po->update(['status' => 'Partial']);
             }
         });
 
-        return back()->with('success', 'Barang berhasil diterima dan stok telah ditambahkan.');
+        return back()->with('success', 'Barang diterima, Stok bertambah, & Keuangan tercatat otomatis.');
     }
-
     /**
      * Menampilkan detail PO (Opsional, untuk view show).
      */

@@ -1,10 +1,11 @@
 <aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
        class="sidebar fixed inset-y-0 left-0 bg-white w-64 shadow-lg z-30 flex flex-col transition-transform duration-300 ease-in-out md:relative md:translate-x-0">
 
-    <div class="flex items-center justify-center p-4 border-b flex-shrink-0 h-16">
-        <i class="fa-solid fa-cubes-stacked h-8 w-8 text-blue-600"></i>
+    <a href="dashboard" class="flex items-center justify-center p-4 border-b flex-shrink-0 h-16">
+     <img src="{{ asset('storage/bgnlogo.png') }}"   class="w-10 h-10 object-contain" alt="Logo">
+
         <h1 class="text-xl font-bold ml-2 text-gray-800">SPPG Super App</h1>
-    </div>
+    </a>
 
     <nav class="flex-1 overflow-y-auto p-2 space-y-1">
 
