@@ -22,8 +22,7 @@
         .sidebar { transition: transform 0.3s ease-in-out; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 font-sans antialiased" x-data="{ sidebarOpen: false }" x-cloak>
-
+<body class="bg-slate-50 text-slate-800 font-sans antialiased" x-data="{ sidebarOpen: false }" x-cloak>
     <div class="flex h-screen overflow-hidden">
 
         <div x-show="sidebarOpen"
