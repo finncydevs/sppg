@@ -55,7 +55,8 @@ class DriverController extends Controller
         $destination = ShipmentDestination::findOrFail($destinationId);
 
         // Security Check
-        if ($destination->shipment->driver_id !== Auth::user()->employee->id) {
+        $user = Auth::user();
+        if (!$user->employee || !$destination->shipment || $destination->shipment->driver_id !== $user->employee->id) {
             abort(403, 'Anda tidak berhak mengupdate pengiriman ini.');
         }
 
@@ -112,5 +113,5 @@ class DriverController extends Controller
 
         return back()->with('success', 'Laporan berhasil dikirim.');
     }
-    
+
 }
